@@ -1,0 +1,21 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: backend-starter
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher
+
+openai:
+  api-key: ${OPENAI_API_KEY}
+  model: gpt-3.5-turbo
+  url: https://api.openai.com/v1/chat/completions
+
+logging:
+  level:
+    org:
+      springframework: INFO
+    com:
+      carlosrdev: DEBUG
