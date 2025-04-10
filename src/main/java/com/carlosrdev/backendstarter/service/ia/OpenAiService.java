@@ -1,11 +1,14 @@
 package com.carlosrdev.backendstarter.service.ia;
 
+import com.carlosrdev.backendstarter.dto.PromptTask;
 import com.carlosrdev.backendstarter.model.PromptLog;
 import com.carlosrdev.backendstarter.repository.PromptLogRepository;
+import com.carlosrdev.backendstarter.util.MdcRunnable;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -35,7 +38,7 @@ public class OpenAiService {
     private String apiUrl;
 
     // Cola para controlar las peticiones
-    private final BlockingQueue<String> promptQueue = new LinkedBlockingQueue<>();
+    private final BlockingQueue<PromptTask> promptQueue = new LinkedBlockingQueue<>();
     private ExecutorService executorService;
     private WebClient webClient;
     private final PromptLogRepository promptLogRepository;
@@ -54,7 +57,7 @@ public class OpenAiService {
 
         // Iniciar un hilo consumidor
         executorService = Executors.newSingleThreadExecutor();
-        executorService.submit(this::processQueue);
+        executorService.submit(MdcRunnable.wrap(this::processQueue));
     }
 
     @PreDestroy
@@ -64,9 +67,9 @@ public class OpenAiService {
     }
 
     // Método expuesto para usar desde el controller
-    public void enqueuePrompt(String prompt) {
+    public void enqueuePrompt(String prompt, String traceId) {
         try {
-            promptQueue.put(prompt);
+            promptQueue.put(new PromptTask(prompt, traceId));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             log.error("❌ Error al encolar prompt: {}", e.getMessage());
@@ -76,20 +79,24 @@ public class OpenAiService {
     private void processQueue() {
         while (true) {
             try {
-                String prompt = promptQueue.take(); // bloquea hasta que haya algo
+                PromptTask task = promptQueue.take();
+                MDC.put("traceId", task.traceId()); // Reinyectamos el contexto
+                String prompt = task.prompt();
                 log.info("🧾 Procesando prompt: {}", prompt);
 
                 String result = callOpenAi(prompt);
                 log.info("✅ Respuesta OpenAI: {}", result);
+
+                String traceId = MDC.get("traceId");
 
                 promptLogRepository.save(PromptLog.builder()
                         .prompt(prompt)
                         .response(result)
                         .success(!result.startsWith("❌") && !result.startsWith("🤖"))
                         .timestamp(LocalDateTime.now())
+                        .traceId(traceId)
                         .build());
-
-
+                
                 // Delay entre peticiones (puedes ajustar o quitar)
                 Thread.sleep(5000);
 

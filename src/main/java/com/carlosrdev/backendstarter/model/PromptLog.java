@@ -25,5 +25,8 @@ public class PromptLog {
     private boolean success;
 
     private LocalDateTime timestamp;
+
+    @Column(name = "trace_id")
+    private String traceId;
 }
 
