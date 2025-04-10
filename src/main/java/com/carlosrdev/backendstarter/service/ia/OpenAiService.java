@@ -1,5 +1,7 @@
 package com.carlosrdev.backendstarter.service.ia;
 
+import com.carlosrdev.backendstarter.model.PromptLog;
+import com.carlosrdev.backendstarter.repository.PromptLogRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +13,7 @@ import org.springframework.web.reactive.function.client.WebClientResponseExcepti
 import reactor.util.retry.Retry;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.concurrent.*;
 
@@ -35,6 +38,8 @@ public class OpenAiService {
     private final BlockingQueue<String> promptQueue = new LinkedBlockingQueue<>();
     private ExecutorService executorService;
     private WebClient webClient;
+    private final PromptLogRepository promptLogRepository;
+
 
     @PostConstruct
     public void init() {
@@ -76,6 +81,14 @@ public class OpenAiService {
 
                 String result = callOpenAi(prompt);
                 log.info("✅ Respuesta OpenAI: {}", result);
+
+                promptLogRepository.save(PromptLog.builder()
+                        .prompt(prompt)
+                        .response(result)
+                        .success(!result.startsWith("❌") && !result.startsWith("🤖"))
+                        .timestamp(LocalDateTime.now())
+                        .build());
+
 
                 // Delay entre peticiones (puedes ajustar o quitar)
                 Thread.sleep(5000);
