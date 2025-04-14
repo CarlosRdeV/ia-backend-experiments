@@ -14,6 +14,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import reactor.util.retry.Retry;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Counter;
+
 
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -43,6 +46,12 @@ public class OpenAiService {
     private WebClient webClient;
     private final PromptLogRepository promptLogRepository;
 
+    private final MeterRegistry meterRegistry;
+    private Counter promptCounter;
+    private Counter promptErrorCounter;
+
+
+
 
     @PostConstruct
     public void init() {
@@ -58,6 +67,16 @@ public class OpenAiService {
         // Iniciar un hilo consumidor
         executorService = Executors.newSingleThreadExecutor();
         executorService.submit(MdcRunnable.wrap(this::processQueue));
+
+        this.promptCounter = Counter.builder("openai.prompts.processed")
+                .tag("model", model)
+                .register(meterRegistry);
+
+        this.promptErrorCounter = Counter.builder("openai.prompts.failed")
+                .tag("model", model)
+                .register(meterRegistry);
+
+
     }
 
     @PreDestroy
@@ -85,18 +104,18 @@ public class OpenAiService {
                 log.info("🧾 Procesando prompt: {}", prompt);
 
                 String result = callOpenAi(prompt);
+                boolean success = !result.startsWith("❌") && !result.startsWith("🤖");
+
+                if (!success) {
+                    promptErrorCounter.increment();
+                }
+
                 log.info("✅ Respuesta OpenAI: {}", result);
 
-                String traceId = MDC.get("traceId");
+                promptCounter.increment();
 
-                promptLogRepository.save(PromptLog.builder()
-                        .prompt(prompt)
-                        .response(result)
-                        .success(!result.startsWith("❌") && !result.startsWith("🤖"))
-                        .timestamp(LocalDateTime.now())
-                        .traceId(traceId)
-                        .build());
-                
+                persistPromptLog(prompt, result);
+
                 // Delay entre peticiones (puedes ajustar o quitar)
                 Thread.sleep(5000);
 
@@ -145,4 +164,15 @@ public class OpenAiService {
             return "❌ Algo salió mal. Detalles: " + e.getMessage();
         }
     }
+
+    private void persistPromptLog(String prompt, String response) {
+        promptLogRepository.save(PromptLog.builder()
+                .prompt(prompt)
+                .response(response)
+                .success(!response.startsWith("❌") && !response.startsWith("🤖"))
+                .timestamp(LocalDateTime.now())
+                .traceId(MDC.get("traceId"))
+                .build());
+    }
+
 }
