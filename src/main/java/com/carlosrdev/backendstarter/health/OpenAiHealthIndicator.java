@@ -1,49 +1,64 @@
 package com.carlosrdev.backendstarter.health;
 
+import com.carlosrdev.backendstarter.metrics.OpenAiLatencyMetrics;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.actuate.health.HealthIndicator;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
 
 @Component
 public class OpenAiHealthIndicator implements HealthIndicator {
 
     private final WebClient webClient;
+    private final OpenAiLatencyMetrics openAiLatencyMetrics;
 
     @Value("${openai.api-key}")
     private String apiKey;
 
-    public OpenAiHealthIndicator(WebClient.Builder builder) {
-        this.webClient = builder
-                .baseUrl("https://api.openai.com")
-                .build();
+    private long lastCheckTime = 0;
+    private Health cachedHealth = Health.unknown().withDetail("message", "Sin datos aún").build();
+
+    private static final long CACHE_DURATION_MS = 2 * 60 * 1000; // 5 minutos
+
+    public OpenAiHealthIndicator(WebClient.Builder builder, OpenAiLatencyMetrics openAiLatencyMetrics) {
+        this.webClient = builder.baseUrl("https://api.openai.com").build();
+        this.openAiLatencyMetrics = openAiLatencyMetrics;
     }
 
     @Override
     public Health health() {
+        long now = System.currentTimeMillis();
+
+        if (now - lastCheckTime < CACHE_DURATION_MS) {
+            return cachedHealth; // 🧊 Reusar el último resultado
+        }
+
         try {
             long start = System.currentTimeMillis();
             webClient.get()
-                    .uri("/v1/models") // no consume tokens y responde rápido
-                    .header("Authorization", "Bearer " + apiKey) // o usa @Value si prefieres
+                    .uri("/v1/models")
+                    .header("Authorization", "Bearer " + apiKey)
                     .retrieve()
                     .toBodilessEntity()
                     .block();
 
             long latency = System.currentTimeMillis() - start;
+            openAiLatencyMetrics.updateLatency(latency);
 
-            return Health.up()
+            cachedHealth = Health.up()
                     .withDetail("latency", latency + "ms")
-                    .withDetail("message", "OpenAI está despierto y ligeramente irritado")
+                    .withDetail("message", "OpenAI responde como una diva puntual")
                     .build();
 
         } catch (Exception e) {
-            return Health.down()
+            cachedHealth = Health.down()
                     .withDetail("error", e.getMessage())
-                    .withDetail("message", "OpenAI no responde. Está llorando en una esquina.")
+                    .withDetail("message", "OpenAI se escondió bajo la mesa")
                     .build();
         }
+
+        lastCheckTime = now;
+        return cachedHealth;
     }
 }
