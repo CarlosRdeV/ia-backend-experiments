@@ -14,6 +14,8 @@ services:
     volumes:
       - ./src:/app/src
     restart: unless-stopped
+    env_file:
+      - .env
 
   alloy:
     image: grafana/alloy:latest
