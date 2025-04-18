@@ -28,5 +28,18 @@ public class PromptLog {
 
     @Column(name = "trace_id")
     private String traceId;
+
+    @Column(name = "model")
+    private String model;
+
+    @Column(name = "latency_ms")
+    private Long latencyMs;
+
+    @Column(name = "status_code")
+    private Integer statusCode;
+
+    @Column(name = "source_info")
+    private String sourceInfo;
+
 }
 

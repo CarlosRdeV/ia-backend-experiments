@@ -1,6 +1,6 @@
 package com.carlosrdev.backendstarter.service.ia;
 
-import com.carlosrdev.backendstarter.dto.PromptTask;
+import com.carlosrdev.backendstarter.dto.*;
 import com.carlosrdev.backendstarter.model.PromptLog;
 import com.carlosrdev.backendstarter.repository.PromptLogRepository;
 import com.carlosrdev.backendstarter.util.MdcRunnable;
@@ -99,11 +99,14 @@ public class OpenAiService {
         while (true) {
             try {
                 PromptTask task = promptQueue.take();
-                MDC.put("traceId", task.traceId()); // Reinyectamos el contexto
+                MDC.put("traceId", task.traceId());
                 String prompt = task.prompt();
                 log.info("🧾 Procesando prompt: {}", prompt);
 
+                long start = System.currentTimeMillis();
                 String result = callOpenAi(prompt);
+                long latency = System.currentTimeMillis() - start;
+
                 boolean success = !result.startsWith("❌") && !result.startsWith("🤖");
 
                 if (!success) {
@@ -111,12 +114,10 @@ public class OpenAiService {
                 }
 
                 log.info("✅ Respuesta OpenAI: {}", result);
-
                 promptCounter.increment();
 
-                persistPromptLog(prompt, result);
+                persistPromptLog(prompt, result, latency, success, 200); // status simulado
 
-                // Delay entre peticiones (puedes ajustar o quitar)
                 Thread.sleep(5000);
 
             } catch (InterruptedException e) {
@@ -165,13 +166,17 @@ public class OpenAiService {
         }
     }
 
-    private void persistPromptLog(String prompt, String response) {
+    private void persistPromptLog(String prompt, String response, long latency, boolean success, int statusCode) {
         promptLogRepository.save(PromptLog.builder()
                 .prompt(prompt)
                 .response(response)
-                .success(!response.startsWith("❌") && !response.startsWith("🤖"))
+                .success(success)
                 .timestamp(LocalDateTime.now())
                 .traceId(MDC.get("traceId"))
+                .latencyMs(latency)
+                .model(model)
+                .statusCode(statusCode)
+                .sourceInfo("localhost") // simulación, esto podrías recogerlo desde headers HTTP en una app real
                 .build());
     }
 
