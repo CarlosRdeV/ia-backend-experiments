@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  ia-backend:
+    container_name: ia-backend-experiments
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=default
+      - JAVA_OPTS=-Xmx512m
+    volumes:
+      - ./src:/app/src
+    restart: unless-stopped
+
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy-agent
+    volumes:
+      - ./grafana/config.alloy:/etc/alloy/config.alloy
+    command: ["run", "/etc/alloy/config.alloy"]
+    ports:
+      - "12345:12345" # Prometheus-style metrics port
+    restart: unless-stopped

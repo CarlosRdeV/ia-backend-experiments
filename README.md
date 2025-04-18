@@ -138,3 +138,7 @@ Este proyecto **no tiene licencia**.
 Úsalo bajo tu propio riesgo. Si te explota el CPU, no fue culpa mía.  
 Pero si impresiona a alguien... sí lo hice yo.
 
+## 🔧 Cómo iniciar localmente
+
+```bash
+docker-compose up --build
