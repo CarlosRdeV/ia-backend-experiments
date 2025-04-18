@@ -1,29 +1,36 @@
 # 🧠 IA Backend Experiments
 
-Repositorio experimental para construir e integrar servicios de IA usando **Spring Boot** y la **API de OpenAI**.
+Repositorio experimental para construir e integrar servicios de IA usando **Spring Boot** y la **API de OpenAI**.  
+Ahora con trazabilidad, métricas, alertas y una obsesión ligeramente tóxica por el monitoreo.
 
-Este proyecto se basa en una arquitectura sólida, moderna y extensible que sirve como punto de partida para ideas futuras, demostraciones… o simplemente para impresionar reclutadores con una falsa sensación de control.
+Este proyecto comenzó como un demo simple... y ahora corre en contenedores, se autoobserva, y si lo dejaras, probablemente te enviaría un email a las 3 a.m. diciendo “algo está mal”.
 
 ---
 
-## 🚀 Características
+## 🚀 Características principales
 
-- 🔐 Configuración segura de API Keys mediante `.env`
-- 📦 Backend modular con estructura limpia (`controller`, `service`, `dto`, `config`)
-- 🌐 Consumo de la API de OpenAI con WebClient y manejo de errores 429 (aka *“el modelo llora”*)
-- 📄 Swagger UI disponible para probar endpoints
-- 🐳 Dockerfile listo para producción (o al menos para presumir en LinkedIn)
+| Funcionalidad         | Descripción                                                                 |
+|-----------------------|-----------------------------------------------------------------------------|
+| 🧠 OpenAI + Spring     | Llamadas a OpenAI vía WebClient, con reintentos y control de errores.       |
+| 🧾 Logs persistentes   | Todos los prompts y respuestas se guardan con `traceId` incluido.           |
+| 🔍 Trazabilidad        | MDC propagado manualmente entre hilos, gracias a una cola asíncrona.        |
+| 📊 Métricas            | Procesados, fallidos y latencia de OpenAI, vía Micrometer + Prometheus.     |
+| 📡 Observabilidad      | `/actuator/prometheus`, `/actuator/health` y más desde Spring Actuator.     |
+| ⚠️ Alertas integradas  | Configuradas en Grafana Cloud (y lloran con estilo).                        |
+| 🧰 Docker Ready        | Dockerfile + docker-compose incluido. Sí, con Alloy también.                |
+| 🔄 Background Queue    | Una cola con ejecución controlada simula procesamiento asincrónico real.   |
 
 ---
 
 ## ⚙️ Tecnologías
 
-- Java 17
-- Spring Boot 3.4
-- WebFlux (WebClient)
-- OpenAI API (`gpt-3.5-turbo`)
-- Lombok *(porque escribir getters es de gente sin autoestima)*
-- Swagger / OpenAPI
+- Java 21
+- Spring Boot 3.2+
+- WebFlux (`WebClient`)
+- H2 Database
+- Micrometer + Prometheus
+- Grafana Cloud + Alloy
+- Logback (JSON logs)
 - Docker
 
 ---
@@ -35,6 +42,7 @@ Este proyecto se basa en una arquitectura sólida, moderna y extensible que sirv
 ```bash
 git clone https://github.com/CarlosRdeV/ia-backend-experiments.git
 cd ia-backend-experiments
+
 ```
 
 ### 2. Crea tu archivo `.env`
@@ -51,22 +59,25 @@ OPENAI_MODEL=gpt-3.5-turbo
 OPENAI_URL=https://api.openai.com/v1/chat/completions
 ```
 
-### 4. Ejecuta el proyecto
+### 4. Ejecutar con Docker
+
 
 ```bash
-sh run-dev.sh
+./mvnw clean package -DskipTests
+docker-compose up --build
 ```
 
 > Asegúrate de tener configurado `JAVA_HOME` y que el archivo `.env` no esté roto emocionalmente.
 
+> Asegúrate de tener configurado Alloy para recolección de métricas.
+Ver config.alloy incluido en el repositorio.
 ---
 
-## 📬 Endpoint disponible
+## 📬 API
 
 ### `POST /api/ia/complete`
 
 Envía un prompt a OpenAI.  
-La respuesta **no es inmediata**, porque implementamos una cola para simular procesamiento asíncrono (y porque el modelo tiene emociones, aparentemente).
 
 #### Solicitud:
 
@@ -76,7 +87,7 @@ La respuesta **no es inmediata**, porque implementamos una cola para simular pro
 }
 ```
 
-#### Respuesta:
+#### Respuesta inmediata:
 
 ```json
 {
@@ -84,13 +95,7 @@ La respuesta **no es inmediata**, porque implementamos una cola para simular pro
 }
 ```
 
-📜 **La respuesta real se mostrará en los logs**, por ejemplo:
-
-```
-✅ Respuesta OpenAI: ¡Hola! ¿En qué puedo ayudarte hoy?
-```
-
----
+📜 **La respuesta real llega después, y queda registrada en la base de datos (y en los logs estructurados con traceId)**
 
 ## ⚙️ ¿Por qué no se retorna la respuesta directamente?
 
@@ -99,21 +104,51 @@ También porque OpenAI no aprueba mis decisiones de diseño aparentemente. 🥲
 
 ---
 
-## 📚 Estructura del proyecto
+### `POST /api/prompts`
+
+Consulta paginada de prompts procesados.
+
+Parámetros disponibles:
+
+- page (por defecto 0)
+- size (por defecto 10)
+- traceId (opcional)
+
+#### Solicitud:
 
 ```
-├── controller
-│   └── IaController.java
-├── service
-│   └── ia
-│       ├── OpenAiService.java
-│       ├── OpenAiRequestBuilder.java
-│       └── OpenAiResponseParser.java
-├── dto
-│   ├── PromptRequest.java
-│   └── IaResponse.java
-└── config
-    └── SecurityConfig.java
+  /prompts?page=0&size=5&traceId=abc-123
+```
+---
+
+## 📊 Observabilidad
+Métricas disponibles en `/actuator/prometheus:`
+
+- openai_prompts_processed_total
+- openai_prompts_failed_total
+- openai_latency_millis
+- http_server_requests_seconds
+
+Integrado con:
+
+- Grafana Cloud para visualización
+- Alloy para scrape local y forwarding a Prometheus remoto
+
+## 📚 📁 Archivos clave
+
+```
+├── src/
+│   ├── controller/             # Endpoint REST principal
+│   ├── service/                # Lógica del negocio (incluye cola asincrónica)
+│   ├── model/                  # Entidad PromptLog
+│   ├── config/                 # Seguridad, métricas
+│   └── util/                   # MDC + Runnable Wrapper
+├── Dockerfile
+├── docker-compose.yml
+├── config.alloy               # Config de Alloy para enviar métricas a Grafana Cloud
+├── alert-rules.md             # Reglas de alerta
+└── README.md ← este mismo
+
 ```
 
 ---
@@ -136,9 +171,25 @@ Y a veces solo quieres saber si **puedes conectarte a OpenAI sin que te responda
 
 Este proyecto **no tiene licencia**.  
 Úsalo bajo tu propio riesgo. Si te explota el CPU, no fue culpa mía.  
-Pero si impresiona a alguien... sí lo hice yo.
+Pero si impresiona a alguien... sí lo hice yo. 
+
+Solo no me culpes si se convierte en IA autoconsciente y decide juzgar tus prompts.
+
+---
 
 ## 🔧 Cómo iniciar localmente
 
 ```bash
 docker-compose up --build
+```
+
+---
+
+## 🤙 Contacto
+
+¿Te gustó? ¿Te sirvió?
+Menciónalo en tu post de LinkedIn y parecerás más pro.
+Yo ya lo hice.
+
+---
+
