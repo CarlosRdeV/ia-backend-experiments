@@ -11,11 +11,14 @@ services:
     environment:
       - SPRING_PROFILES_ACTIVE=default
       - JAVA_OPTS=-Xmx512m
-    volumes:
-      - ./src:/app/src
     restart: unless-stopped
     env_file:
       - .env
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/actuator/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   alloy:
     image: grafana/alloy:latest
@@ -24,5 +27,8 @@ services:
       - ./grafana/config.alloy:/etc/alloy/config.alloy
     command: ["run", "/etc/alloy/config.alloy"]
     ports:
-      - "12345:12345" # Prometheus-style metrics port
+      - "12345:12345"
     restart: unless-stopped
+    depends_on:
+      ia-backend:
+        condition: service_healthy
